@@ -1,0 +1,6 @@
+{
+  "name": "EchoPulse RPi - Rogue Echo & Polar H10 Telemetry Hub",
+  "description": "High-contrast real-time telemetry dashboard for Rogue Echo Bike and Polar H10 heart rate monitor, designed for Raspberry Pi 4 and mobile/desktop clients.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

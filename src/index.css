@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-display: 'Barlow Condensed', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-sans: 'Plus Jakarta Sans', sans-serif;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #080c14;
+    color: #f1f5f9;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+}
+
+.font-display {
+  font-family: 'Barlow Condensed', sans-serif;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom digital segment / glowing accent for athletic telemetry */
+.glow-accent {
+  text-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+}
+
+.glow-orange {
+  text-shadow: 0 0 24px rgba(249, 115, 22, 0.45);
+}
+
+.glow-red {
+  text-shadow: 0 0 24px rgba(239, 68, 68, 0.45);
+}
+
+.glow-green {
+  text-shadow: 0 0 24px rgba(34, 197, 94, 0.45);
+}
+
+/* High contrast scanlines subtle effect for physical bike console vibe */
+.bike-console-bezel {
+  box-shadow: inset 0 2px 4px 0 rgba(255, 255, 255, 0.05), inset 0 -2px 6px 0 rgba(0, 0, 0, 0.8), 0 20px 25px -5px rgba(0, 0, 0, 0.7);
+}
+
+/* Custom thin scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}

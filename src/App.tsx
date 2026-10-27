@@ -568,6 +568,7 @@ export default function App() {
                   else soundEffects.playRestChime();
                 }
               }}
+              samples={samples}
             />
 
             {/* Real-time Hardware Telemetry Graph */}

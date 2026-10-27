@@ -60,6 +60,19 @@ app.get('/api/pi/info', (_req: Request, res: Response) => {
     }
   }
 
+  // Sort IP addresses so standard local Wi-Fi and LAN addresses appear first before virtual adapters
+  ipAddresses.sort((a, b) => {
+    const isLocalA = a.address.startsWith('192.168.') || a.address.startsWith('10.');
+    const isLocalB = b.address.startsWith('192.168.') || b.address.startsWith('10.');
+    if (isLocalA && !isLocalB) return -1;
+    if (!isLocalA && isLocalB) return 1;
+    const aWifi = a.name.toLowerCase().includes('wi-fi') || a.name.toLowerCase().includes('wlan');
+    const bWifi = b.name.toLowerCase().includes('wi-fi') || b.name.toLowerCase().includes('wlan');
+    if (aWifi && !bWifi) return -1;
+    if (!aWifi && bWifi) return 1;
+    return 0;
+  });
+
   // Attempt to read Pi CPU thermal temp if running on Linux / Raspberry Pi
   let cpuTempC: number | null = null;
   try {

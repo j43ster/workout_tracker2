@@ -46,6 +46,7 @@ export class RogueEchoBleClient {
       ],
       optionalServices: [
         0x1826, // Fitness Machine Service
+        'fitness_machine',
         'cycling_power', // 0x1818
         'cycling_speed_and_cadence', // 0x1816
       ],

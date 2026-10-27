@@ -3,13 +3,15 @@ import QRCode from 'qrcode';
 import {
   Cpu,
   Smartphone,
-  ExternalLink,
   Copy,
   Check,
   Terminal,
   Activity,
   Server,
   Thermometer,
+  Wifi,
+  ExternalLink,
+  Edit2,
 } from 'lucide-react';
 
 interface PiInfo {
@@ -29,8 +31,28 @@ interface PiInfo {
 export const PiNetworkModal: React.FC = () => {
   const [piInfo, setPiInfo] = useState<PiInfo | null>(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  const [selectedUrl, setSelectedUrl] = useState<string>('');
+  const [isCustomEditing, setIsCustomEditing] = useState<boolean>(false);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'connect' | 'kiosk' | 'bluetooth'>('connect');
+
+  // Generate QR code for any given target URL
+  const generateQr = async (url: string) => {
+    if (!url) return;
+    try {
+      const qr = await QRCode.toDataURL(url, {
+        width: 280,
+        margin: 1.5,
+        color: {
+          dark: '#ffffff',
+          light: '#070b14',
+        },
+      });
+      setQrCodeDataUrl(qr);
+    } catch {
+      // Ignore
+    }
+  };
 
   const fetchPiInfo = async () => {
     try {
@@ -39,30 +61,39 @@ export const PiNetworkModal: React.FC = () => {
         const data: PiInfo = await res.json();
         setPiInfo(data);
 
-        // Generate QR code for current URL or primary local network IP
-        const targetUrl =
-          typeof window !== 'undefined'
-            ? window.location.href
-            : data.appUrl;
+        // Determine best IP address for phone connection
+        let bestUrl = '';
 
-        const qr = await QRCode.toDataURL(targetUrl, {
-          width: 260,
-          margin: 1.5,
-          color: {
-            dark: '#ffffff',
-            light: '#0a0f1d',
-          },
-        });
-        setQrCodeDataUrl(qr);
+        // 1. If physical LAN IP exists, prefer it over localhost
+        if (data.ipAddresses && data.ipAddresses.length > 0) {
+          const lanIp = data.ipAddresses[0].address;
+          bestUrl = `http://${lanIp}:${data.serverPort || 3000}`;
+        } else if (
+          typeof window !== 'undefined' &&
+          window.location.hostname !== 'localhost' &&
+          window.location.hostname !== '127.0.0.1'
+        ) {
+          // If on a public URL (e.g. cloud or tunnel)
+          bestUrl = window.location.origin;
+        } else {
+          bestUrl = data.appUrl || 'http://192.168.1.100:3000';
+        }
+
+        // Only set default if user hasn't typed a custom URL
+        if (!selectedUrl || !isCustomEditing) {
+          setSelectedUrl(bestUrl);
+          generateQr(bestUrl);
+        }
       }
     } catch {
-      // Fallback if running standalone browser
-      if (typeof window !== 'undefined') {
-        QRCode.toDataURL(window.location.href, {
-          width: 260,
-          margin: 1.5,
-          color: { dark: '#ffffff', light: '#0a0f1d' },
-        }).then(setQrCodeDataUrl);
+      // Fallback
+      if (!selectedUrl && typeof window !== 'undefined') {
+        const fallback =
+          window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+            ? window.location.origin
+            : 'http://192.168.1.100:3000';
+        setSelectedUrl(fallback);
+        generateQr(fallback);
       }
     }
   };
@@ -73,14 +104,25 @@ export const PiNetworkModal: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const handleSelectIp = (ipAddress: string, port: number) => {
+    const url = `http://${ipAddress}:${port}`;
+    setSelectedUrl(url);
+    setIsCustomEditing(false);
+    generateQr(url);
+  };
+
+  const handleCustomUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setSelectedUrl(val);
+    setIsCustomEditing(true);
+    generateQr(val);
+  };
+
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedUrl(text);
     setTimeout(() => setCopiedUrl(null), 2000);
   };
-
-  const currentOrigin =
-    typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
 
   return (
     <div className="space-y-6">
@@ -88,10 +130,10 @@ export const PiNetworkModal: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
           <h2 className="text-xl font-bold font-display uppercase tracking-wide text-white">
-            Raspberry Pi 4 Hub & Multi-Device Sync
+            Raspberry Pi 4 Hub & Phone QR Sync
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Connect any phone, tablet, or secondary display to view live metrics during training
+            Connect your phone to view the dashboard live on your handlebars
           </p>
         </div>
 
@@ -100,7 +142,9 @@ export const PiNetworkModal: React.FC = () => {
           <button
             onClick={() => setActiveTab('connect')}
             className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-              activeTab === 'connect' ? 'bg-orange-600 text-white font-semibold' : 'text-slate-400 hover:text-white'
+              activeTab === 'connect'
+                ? 'bg-orange-600 text-white font-semibold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             Mobile Connect & QR
@@ -108,7 +152,9 @@ export const PiNetworkModal: React.FC = () => {
           <button
             onClick={() => setActiveTab('kiosk')}
             className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-              activeTab === 'kiosk' ? 'bg-orange-600 text-white font-semibold' : 'text-slate-400 hover:text-white'
+              activeTab === 'kiosk'
+                ? 'bg-orange-600 text-white font-semibold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             RPi Kiosk Setup
@@ -116,7 +162,9 @@ export const PiNetworkModal: React.FC = () => {
           <button
             onClick={() => setActiveTab('bluetooth')}
             className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-              activeTab === 'bluetooth' ? 'bg-orange-600 text-white font-semibold' : 'text-slate-400 hover:text-white'
+              activeTab === 'bluetooth'
+                ? 'bg-orange-600 text-white font-semibold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             Pi BLE Gateway
@@ -125,80 +173,107 @@ export const PiNetworkModal: React.FC = () => {
       </div>
 
       {activeTab === 'connect' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
           {/* QR Code Container */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 flex flex-col items-center justify-center text-center">
             <div className="flex items-center gap-2 text-xs font-mono uppercase text-orange-400 font-bold mb-3">
               <Smartphone className="w-4 h-4" />
-              <span>Scan from Phone or Tablet</span>
+              <span>Scan from Phone Camera</span>
             </div>
 
             {qrCodeDataUrl ? (
-              <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 shadow-xl shadow-slate-950">
+              <div className="p-3.5 bg-[#070b14] rounded-2xl border border-slate-800 shadow-2xl shadow-black/80">
                 <img
                   src={qrCodeDataUrl}
                   alt="QR Code for mobile connection"
-                  className="w-48 h-48 sm:w-56 sm:h-56 rounded-lg select-none"
+                  className="w-52 h-52 sm:w-60 sm:h-60 rounded-lg select-none"
                 />
               </div>
             ) : (
-              <div className="w-48 h-48 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-center text-slate-500 font-mono text-xs">
+              <div className="w-52 h-52 bg-[#070b14] rounded-2xl border border-slate-800 flex items-center justify-center text-slate-500 font-mono text-xs">
                 Generating QR code...
               </div>
             )}
 
-            <p className="text-xs text-slate-400 font-mono mt-4 max-w-xs leading-relaxed">
-              Open your smartphone camera, scan the QR code to open the real-time HUD on your handlebar phone mount!
+            {/* Prominently show what URL the QR encodes */}
+            <div className="mt-4 w-full bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between gap-2">
+              <div className="text-left font-mono text-xs truncate">
+                <div className="text-[10px] text-slate-500 uppercase">QR Code Points To:</div>
+                <div className="font-bold text-orange-400 truncate">{selectedUrl}</div>
+              </div>
+              <button
+                onClick={() => handleCopy(selectedUrl)}
+                className="p-1.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors shrink-0"
+                title="Copy URL"
+              >
+                {copiedUrl === selectedUrl ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 font-mono mt-3 max-w-xs leading-relaxed">
+              Scan with your phone's camera to connect directly over local Wi-Fi without typing!
             </p>
           </div>
 
-          {/* Network URLs & Pi Status */}
+          {/* Network IP Adapters & Custom IP Configuration */}
           <div className="space-y-4">
             <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3">
-              <div className="text-xs font-bold font-display uppercase tracking-wider text-slate-300">
-                Local Network Access URLs
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold font-display uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                  <Wifi className="w-4 h-4 text-orange-400" />
+                  <span>Detected Network IP Addresses</span>
+                </span>
+                <span className="text-[11px] text-slate-500 font-mono">Click to update QR</span>
               </div>
 
-              {/* Current URL */}
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 flex items-center justify-between gap-3">
-                <div className="truncate font-mono text-xs text-slate-200">
-                  <div className="text-[10px] text-slate-500 uppercase">Current App URL</div>
-                  <div className="font-semibold text-orange-400 truncate">{currentOrigin}</div>
-                </div>
-                <button
-                  onClick={() => handleCopy(currentOrigin)}
-                  className="p-2 rounded bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors shrink-0"
-                >
-                  {copiedUrl === currentOrigin ? (
-                    <Check className="w-4 h-4 text-emerald-400" />
-                  ) : (
-                    <Copy className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-
-              {/* Pi Local IP addresses */}
-              {piInfo && piInfo.ipAddresses.length > 0 && (
+              {/* List of detected IP addresses */}
+              {piInfo && piInfo.ipAddresses.length > 0 ? (
                 <div className="space-y-2">
-                  <div className="text-[11px] font-mono text-slate-400 uppercase">
-                    Raspberry Pi LAN Interfaces
-                  </div>
                   {piInfo.ipAddresses.map((net) => {
-                    const localUrl = `http://${net.address}:${piInfo.serverPort}`;
+                    const candidateUrl = `http://${net.address}:${piInfo.serverPort}`;
+                    const isSelected = selectedUrl === candidateUrl;
+
                     return (
                       <div
                         key={net.address}
-                        className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between gap-2"
+                        onClick={() => handleSelectIp(net.address, piInfo.serverPort)}
+                        className={`p-3 rounded-lg border flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-orange-950/60 border-orange-500 ring-1 ring-orange-500/50'
+                            : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                        }`}
                       >
-                        <div className="font-mono text-xs">
-                          <span className="text-slate-500">{net.name}: </span>
-                          <span className="text-slate-200 font-semibold">{localUrl}</span>
+                        <div className="font-mono text-xs truncate">
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400 font-semibold">{net.name}</span>
+                            {isSelected && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-orange-500 text-slate-950 uppercase">
+                                Active in QR
+                              </span>
+                            )}
+                          </div>
+                          <div
+                            className={`font-semibold mt-0.5 truncate ${
+                              isSelected ? 'text-orange-400' : 'text-slate-200'
+                            }`}
+                          >
+                            {candidateUrl}
+                          </div>
                         </div>
+
                         <button
-                          onClick={() => handleCopy(localUrl)}
-                          className="p-1.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopy(candidateUrl);
+                          }}
+                          className="p-1.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors shrink-0"
                         >
-                          {copiedUrl === localUrl ? (
+                          {copiedUrl === candidateUrl ? (
                             <Check className="w-3.5 h-3.5 text-emerald-400" />
                           ) : (
                             <Copy className="w-3.5 h-3.5" />
@@ -208,17 +283,36 @@ export const PiNetworkModal: React.FC = () => {
                     );
                   })}
                 </div>
+              ) : (
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs font-mono text-slate-400">
+                  No secondary network adapters detected. Enter your machine's IP manually below.
+                </div>
               )}
+
+              {/* Manual IP / URL Override Input */}
+              <div className="pt-2 border-t border-slate-800">
+                <label className="block text-[11px] font-mono text-slate-400 mb-1 flex items-center gap-1.5">
+                  <Edit2 className="w-3 h-3 text-slate-400" />
+                  <span>Manual IP or Port Override:</span>
+                </label>
+                <input
+                  type="text"
+                  value={selectedUrl}
+                  onChange={handleCustomUrlChange}
+                  placeholder="http://192.168.1.X:3000"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-orange-500"
+                />
+              </div>
             </div>
 
-            {/* Raspberry Pi Hardware Status */}
+            {/* Hardware & System Health */}
             <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 font-mono text-xs space-y-2">
               <div className="flex items-center justify-between text-slate-300 font-semibold mb-1">
                 <span className="flex items-center gap-1.5">
-                  <Cpu className="w-4 h-4 text-emerald-400" /> Host Hardware
+                  <Cpu className="w-4 h-4 text-emerald-400" /> Host Hardware Status
                 </span>
                 <span className="text-slate-500 font-normal">
-                  {piInfo ? `${piInfo.hostname} (${piInfo.arch})` : 'Node.js host'}
+                  {piInfo ? `${piInfo.hostname} (${piInfo.platform})` : 'Server Online'}
                 </span>
               </div>
 
@@ -252,7 +346,7 @@ export const PiNetworkModal: React.FC = () => {
             Raspberry Pi 4 Fullscreen Kiosk Mode Instructions
           </div>
           <p className="text-slate-400">
-            To make your Raspberry Pi 4 automatically boot into the EchoPulse HUD in fullscreen when powered on with an official 7" Touchscreen or HDMI monitor:
+            To make your Raspberry Pi 4 automatically boot into the EchoPulse HUD in fullscreen when powered on:
           </p>
 
           <div>
@@ -271,24 +365,6 @@ nano ~/.config/lxsession/LXDE-pi/autostart
 @chromium-browser --noerrdialogs --disable-infobars --kiosk http://localhost:3000
             </pre>
           </div>
-
-          <div>
-            <div className="text-slate-400 mb-1">3. Keep Node dev/prod server alive with systemd:</div>
-            <pre className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-slate-300 overflow-x-auto">
-[Unit]
-Description=EchoPulse Telemetry Service
-After=network.target
-
-[Service]
-ExecStart=/usr/bin/npm start
-WorkingDirectory=/home/pi/echopulse
-Restart=always
-User=pi
-
-[Install]
-WantedBy=multi-user.target
-            </pre>
-          </div>
         </div>
       )}
 
@@ -296,33 +372,11 @@ WantedBy=multi-user.target
         <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-5 space-y-4 font-mono text-xs leading-relaxed text-slate-300">
           <div className="flex items-center gap-2 text-white font-bold font-display uppercase tracking-wide text-sm">
             <Server className="w-4 h-4 text-blue-400" />
-            Headless Raspberry Pi BLE Daemon (Optional)
+            Phone Relay Bridge Architecture
           </div>
           <p className="text-slate-400">
-            If you want the Raspberry Pi 4's onboard Bluetooth chip to maintain connections to the Polar H10 and Rogue Echo in the background without needing a browser open, you can run this lightweight Python script (`bleak`):
+            When you scan the QR code with your phone and pair the Polar H10 or Rogue Echo, your phone acts as the high-speed telemetry relay. It receives the short-range BLE packets right on the handlebars and forwards them instantly over Wi-Fi to this screen!
           </p>
-
-          <pre className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 text-cyan-300 overflow-x-auto text-[11px]">
-{`# install: pip install bleak requests
-import asyncio, requests
-from bleak import BleakClient
-
-SERVER_URL = "http://localhost:3000/api/telemetry/live"
-HR_UUID = "00002a37-0000-1000-8000-00805f9b34fb"
-
-def hr_callback(sender, data):
-    hr = data[1] if (data[0] & 0x01) == 0 else int.from_bytes(data[1:3], 'little')
-    requests.post(SERVER_URL, json={"hr": hr})
-
-async def main():
-    # Connects to Polar H10 and relays to EchoPulse API
-    async with BleakClient("POLAR_H10_MAC_OR_UUID") as client:
-        await client.start_notify(HR_UUID, hr_callback)
-        while True:
-            await asyncio.sleep(1)
-
-asyncio.run(main())`}
-          </pre>
         </div>
       )}
     </div>

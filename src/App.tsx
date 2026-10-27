@@ -126,6 +126,27 @@ export default function App() {
     }
   }, [workoutActive, workoutPaused, settings.screenWakeLock]);
 
+  const [isRemoteRelayActive, setIsRemoteRelayActive] = useState<boolean>(false);
+  const lastRelayRef = useRef<number>(0);
+
+  // Relay function to forward phone BLE telemetry to the Pi server
+  const relayTelemetryToServer = useCallback((payload: Record<string, any>) => {
+    const now = Date.now();
+    // Throttle to 1 Hz to prevent spamming
+    if (now - lastRelayRef.current >= 800) {
+      lastRelayRef.current = now;
+      fetch('/api/telemetry/live', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...payload,
+          timestamp: now,
+          source: 'phone_ble_bridge',
+        }),
+      }).catch(() => {});
+    }
+  }, []);
+
   // Connect to SSE stream from Raspberry Pi server if available
   useEffect(() => {
     let eventSource: EventSource | null = null;
@@ -134,13 +155,17 @@ export default function App() {
       eventSource.onmessage = (event) => {
         try {
           const remoteData = JSON.parse(event.data);
-          // If remote Pi is transmitting real hardware BLE telemetry
-          if (remoteData && !isSimulating && !polarState.connected && !echoState.connected) {
-            if (remoteData.hr) setCurrentHr(remoteData.hr);
-            if (remoteData.watts) setCurrentWatts(remoteData.watts);
-            if (remoteData.cadence) setCurrentCadence(remoteData.cadence);
-            if (remoteData.calories) setCumulativeCalories(remoteData.calories);
-            if (remoteData.distanceMeters) setCumulativeDistanceMeters(remoteData.distanceMeters);
+          // If receiving telemetry from phone relay bridge while this screen is in display mode
+          if (remoteData && !polarState.connected && !echoState.connected) {
+            if (remoteData.source === 'phone_ble_bridge' || remoteData.watts > 0 || remoteData.hr > 0) {
+              setIsRemoteRelayActive(true);
+              setIsSimulating(false);
+            }
+            if (remoteData.hr !== undefined && remoteData.hr > 0) setCurrentHr(remoteData.hr);
+            if (remoteData.watts !== undefined) setCurrentWatts(remoteData.watts);
+            if (remoteData.cadence !== undefined) setCurrentCadence(remoteData.cadence);
+            if (remoteData.calories !== undefined) setCumulativeCalories(remoteData.calories);
+            if (remoteData.distanceMeters !== undefined) setCumulativeDistanceMeters(remoteData.distanceMeters);
           }
         } catch {
           // Ignore
@@ -166,6 +191,14 @@ export default function App() {
             sensorContact: data.contactDetected,
             lastPacketTime: Date.now(),
           }));
+          // Relay heart rate to Raspberry Pi server
+          relayTelemetryToServer({
+            hr: data.hr,
+            watts: currentWatts,
+            cadence: currentCadence,
+            calories: cumulativeCalories,
+            distanceMeters: cumulativeDistanceMeters,
+          });
         },
         (level: number) => {
           setPolarState((prev) => ({ ...prev, batteryLevel: level }));
@@ -208,6 +241,15 @@ export default function App() {
           if (data.totalCalories !== undefined) setCumulativeCalories(data.totalCalories);
           if (data.totalDistanceMeters !== undefined) setCumulativeDistanceMeters(data.totalDistanceMeters);
           setEchoState((prev) => ({ ...prev, lastPacketTime: Date.now() }));
+          // Relay Echo bike metrics to Raspberry Pi server
+          relayTelemetryToServer({
+            watts: data.powerWatts,
+            cadence: data.cadenceRpm,
+            hr: currentHr,
+            speedKmh: data.speedKmh,
+            calories: data.totalCalories ?? cumulativeCalories,
+            distanceMeters: data.totalDistanceMeters ?? cumulativeDistanceMeters,
+          });
         },
         () => {
           setEchoState((prev) => ({ ...prev, connected: false }));
@@ -586,8 +628,21 @@ export default function App() {
               zoneSeconds={hrZoneSeconds}
             />
 
+            {/* Phone Relay Bridge status banner if receiving stream from phone */}
+            {isRemoteRelayActive && !polarState.connected && !echoState.connected && (
+              <div className="bg-emerald-950/70 border border-emerald-500/50 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono text-emerald-300">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400" />
+                  <span className="font-semibold">
+                    Phone Relay Bridge Active · Receiving live Polar H10 & Rogue Echo stream over Wi-Fi
+                  </span>
+                </div>
+                <span className="text-[11px] text-emerald-400/80">Handles distance perfectly</span>
+              </div>
+            )}
+
             {/* Quick Helper Banner if devices offline */}
-            {!polarState.connected && !echoState.connected && isSimulating && (
+            {!polarState.connected && !echoState.connected && isSimulating && !isRemoteRelayActive && (
               <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
                 <div className="flex items-center gap-2 text-slate-400">
                   <AlertCircle className="w-4 h-4 text-blue-400 shrink-0" />

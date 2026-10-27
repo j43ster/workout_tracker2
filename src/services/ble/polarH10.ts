@@ -42,7 +42,7 @@ export class PolarH10BleClient {
         { namePrefix: 'Polar H10' },
         { namePrefix: 'Polar' },
       ],
-      optionalServices: ['battery_service'],
+      optionalServices: ['heart_rate', 'battery_service', 0x180d, 0x180f],
     });
 
     this.device = device;
